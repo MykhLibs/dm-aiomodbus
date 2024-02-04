@@ -11,219 +11,195 @@ __all__ = ['DMAioModbusBaseClient']
 
 class DMAioModbusBaseClient:
     _TEMP_CALLBACK_TYPE = Callable[[DMAioModbusTempClientInterface], Coroutine]
-    _LOG_FN_TYPE = Callable[[str], None]
-
-    __reconnect_interval: int = 5
     __logger = None
 
     def __init__(
         self,
         aio_modbus_lib_class: Type[AsyncModbusSerialClient | AsyncModbusTcpClient],
         modbus_config: dict[str, str | int],
+        disconnect_time: float = 5,
         name_tag: str = None
     ) -> None:
         if self.__logger is None:
             name_suffix = f"-{name_tag}" if name_tag is not None else ""
             self.__logger = DMLogger(f"{self.__class__.__name__}{name_suffix}")
+        self.__logger.debug(**modbus_config)
 
-        self.__modbus_config = {**modbus_config, "timeout": 1, "retry": 1}
-        self.__aio_modbus_lib_class = aio_modbus_lib_class
-        self.__client: AsyncModbusSerialClient | AsyncModbusTcpClient = None
-        self.__soft_discon = False
+        self.__actions = []
+        self.__is_locked = False
+        self.__disconnect_time = disconnect_time
+        self.__temp_client = self.__create_temp_client()
+        self.__client = aio_modbus_lib_class(**modbus_config, timeout=1, retry=1)
+
+    def execute(self, callback: _TEMP_CALLBACK_TYPE) -> None:
+        async def _execute() -> None:
+            self.__actions.append(callback)
+            if self.__is_locked:
+                return
+
+            self.__is_locked = True
+            if not self.__is_connected:
+                await self.__connect()
+
+            temp_cb = None
+            while self.__actions:
+                if callable(temp_cb):
+                    cb = temp_cb
+                else:
+                    cb = self.__actions.pop(0)
+                    if not callable(cb):
+                        cb_type = None if cb is None else type(cb)
+                        self.__logger.error(f"Invalid callback: Expected callable, got {cb_type}")
+                        continue
+                try:
+                    await cb(self.__temp_client)
+                except Exception as e:
+                    if not self.__is_connected:
+                        self.__logger.error(f"Connection error: {e}.\nReconnecting...")
+                        await self.__connect()
+                    else:
+                        self.__logger.error(e)
+                    if callable(temp_cb):
+                        temp_cb = None
+                    else:
+                        temp_cb = cb
+            self.__is_locked = False
+            self.__wait_on_disconnect()
+
+        _ = asyncio.create_task(_execute())
+
+    async def execute_and_return(self, callback: _TEMP_CALLBACK_TYPE, timeout: float = 5):
+        result_obj = {"result": None, "executed": False}
+
+        async def return_from_callback(temp_client: DMAioModbusTempClientInterface):
+            result_obj["result"] = await callback(temp_client)
+            result_obj["executed"] = True
+
+        self.execute(return_from_callback)
+
+        wait_time = 0
+        while not result_obj["executed"]:
+            if wait_time > timeout:
+                break
+            await asyncio.sleep(0.001)
+            wait_time += 0.001
+
+        return result_obj["result"]
 
     @property
-    def is_exists(self) -> bool:
-        return self.__client is not None
-
-    @property
-    def is_connected(self) -> bool:
-        return self.is_exists and self.__client.connected
+    def __is_connected(self) -> bool:
+        return self.__client.connected
 
     async def __connect(self) -> None:
-        self.__client = self.__aio_modbus_lib_class(**self.__modbus_config)
-        if not await self.__client.connect():
-            raise ConnectionError("No connection established")
-        self.__logger.info("Connected!")
-
-    async def connect(self) -> None:
-        if self.is_connected:
-            self.__logger.error("Client is already connected!")
-            return
-
-        async def _reconnect_loop(exit_after_connect: bool = False) -> None:
-            while True:
-                try:
-                    if not self.is_connected:
-                        await self.__connect()
-                    if exit_after_connect:
-                        break
-                    while True:
-                        if not self.is_exists:
-                            return
-                        if self.__client.connected:
-                            await asyncio.sleep(0.1)
-                        else:
-                            raise ConnectionError("The connection is lost")
-                except Exception as e:
-                    self.__client.close()
-                    self.__logger.error(
-                        f"Connection error: {e}.\nReconnecting in {self.__reconnect_interval} seconds...")
-                    await asyncio.sleep(self.__reconnect_interval)
-
-        await _reconnect_loop(exit_after_connect=True)
-        _ = asyncio.create_task(_reconnect_loop())
-        await asyncio.sleep(0.001)
-
-    def __soft_disconnect(self):
-        if self.is_exists:
-            if not self.__soft_discon:
-                self.__soft_discon = True
-                self.__logger.info("Disconnected!")
-            self.__client.close()
-
-    def disconnect(self) -> None:
-        if self.is_exists:
-            if self.is_connected:
-                self.__logger.info("Disconnected!")
-            else:
-                self.__logger.warning("Client is not connected!")
-            self.__client.close()
-            self.__client = None
-
-    @classmethod
-    async def temp_connect(
-        cls,
-        callback: _TEMP_CALLBACK_TYPE,
-        aio_modbus_lib_class: Type[AsyncModbusSerialClient | AsyncModbusTcpClient],
-        modbus_config: dict[str, str | int],
-        name_tag: str = None,
-    ):
-        if not callable(callback):
-            cls.__logger.error(f"Callback is not a Callable object: {type(callback)}")
-            return
-
-        if cls.__logger is None:
-            name_suffix = f"-{name_tag}" if name_tag is not None else ""
-            logger = DMLogger(f"{cls.__name__}{name_suffix}")
+        if await self.__client.connect():
+            self.__logger.info("Connected!")
         else:
-            logger = cls.__logger
+            self.__logger.error(f"Connection error: No connection established")
 
-        client = DMAioModbusBaseClient(aio_modbus_lib_class, modbus_config, name_tag)
+    def __wait_on_disconnect(self) -> None:
+        async def disconnect() -> None:
+            wait_time = 0
+            while not self.__is_locked:
+                if wait_time > self.__disconnect_time:
+                    if self.__is_connected:
+                        self.__logger.info("Disconnected!")
+                        self.__client.close()
+                await asyncio.sleep(0.001)
+                wait_time += 0.001
 
+        _ = asyncio.create_task(disconnect())
+
+    async def __error_handler(self, method: Callable, kwargs: dict) -> None:
+        kwargs = {**kwargs, "slave": 1}
         try:
-            temp_client = DMAioModbusTempClientInterface(client)
-            await client.connect()
-            try:
-                return await callback(temp_client)
-            except Exception as e:
-                logger.error(f"Callback error: {e}")
-            finally:
-                cls.__soft_disconnect(client)
-                cls.__soft_discon = False
-        except ConnectionError as e:
-            logger.error(f"Connection error: {e}")
+            result = await method(**kwargs)
+            if result.isError() or isinstance(result, ExceptionResponse):
+                raise ModbusException(f"Received error: {result}")
+            return result
         except Exception as e:
-            logger.error(f"Error: {e}")
+            self.__logger.error(f"Error: {e}", params=kwargs)
+            if not self.__is_connected:
+                await self.__connect()
 
-    async def __execute(self, method_name: str, kwargs: dict) -> None:
-        skip = False
-        if self.is_exists and not self.is_connected:
-            self.__logger.warning("Action on pause! Waiting for reconnection...", action=method_name, params=kwargs)
-            retries = 0
-            while not self.is_connected:
-                if retries >= self.__reconnect_interval + 1:
-                    skip = True
-                    break
-                await asyncio.sleep(0.1)
-                retries += 0.1
-        if not self.is_exists or skip:
-            self.__logger.warning("Action skipped! Client is not connected!", action=method_name, params=kwargs)
+    async def __read(self, method, kwargs: dict) -> list | None:
+        result = await self.__error_handler(method, kwargs)
+        return result.registers if hasattr(result, "registers") else []
 
-        if hasattr(self.__client, method_name):
-            async_method = getattr(self.__client, method_name)
-            if callable(async_method):
-                try:
-                    result = await async_method(**kwargs)
-                    if result.isError() or isinstance(result, ExceptionResponse):
-                        raise ModbusException(f"Received error: {result}")
-                    return result
-                except ModbusException as e:
-                    self.__logger.error(e, action=method_name, params=kwargs)
-                    self.__soft_disconnect()
-                except Exception as e:
-                    self.__logger.error(f"Error: {e}", action=method_name, params=kwargs)
-                    self.__soft_disconnect()
-            else:
-                self.__logger.error(f"Attribute '{method_name}' found, but it's not a method", method=method_name)
-        else:
-            self.__logger.error(f"Method '{method_name}' not found", method=method_name)
-
-    async def __read_register(self, method_name: str, address: int, count: int) -> list | None:
-        kwargs = {
-            "address": address,
-            "count": count,
-            "slave": 1
-        }
-        result = await self.__execute(method_name, kwargs)
-        if result is None:
-            return None
-
-        result_data = result.registers if hasattr(result, "registers") else []
-        if count != len(result_data):
-            self.__logger.warning(f"Expected {count} registers, got {len(result_data)}",
-                                  action=method_name, address=address, count=count)
-        return result_data
-
-    async def __write(self, method_name: str, address: int, value_obj: dict) -> bool:
-        kwargs = {
-            "address": address,
-            **value_obj,
-            "slave": 1,
-        }
-        result = await self.__execute(method_name, kwargs)
+    async def __write(self, method, kwargs: dict) -> bool:
+        result = await self.__error_handler(method, kwargs)
         return bool(result)
 
-    async def read_coils(self, address: int, count: int = 1) -> list | None:
-        return await self.__read_register("read_coils", address, count)
+    async def __read_coils(self, address: int, count: int = 1) -> list | None:
+        return await self.__read(self.__client.read_coils, {
+            "address": address,
+            "count": count
+        })
 
-    async def read_discrete_inputs(self, address: int, count: int = 1) -> list | None:
-        return await self.__read_register("read_discrete_inputs", address, count)
+    async def __read_discrete_inputs(self, address: int, count: int = 1) -> list | None:
+        return await self.__read(self.__client.read_discrete_inputs, {
+            "address": address,
+            "count": count
+        })
 
-    async def read_holding_registers(self, address: int, count: int = 1) -> list | None:
-        return await self.__read_register("read_holding_registers", address, count)
+    async def __read_holding_registers(self, address: int, count: int = 1) -> list | None:
+        return await self.__read(self.__client.read_holding_registers, {
+            "address": address,
+            "count": count
+        })
 
-    async def read_input_registers(self, address: int, count: int = 1) -> list | None:
-        return await self.__read_register("read_input_registers", address, count)
+    async def __read_input_registers(self, address: int, count: int = 1) -> list | None:
+        return await self.__read(self.__client.read_input_registers, {
+            "address": address,
+            "count": count
+        })
 
-    async def write_coil(self, address: int, value: int) -> bool:
-        return await self.__write("write_coil", address, {"value": value})
+    async def __write_coil(self, address: int, value: int) -> bool:
+        return await self.__write(self.__client.write_coil, {
+            "address": address,
+            "value": value,
+        })
 
-    async def write_register(self, address: int, value: int) -> bool:
-        return await self.__write("write_register", address, {"value": value})
+    async def __write_register(self, address: int, value: int) -> bool:
+        return await self.__write(self.__client.write_register, {
+            "address": address,
+            "value": value,
+        })
 
-    async def write_coils(self, address: int, values: list[int] | int) -> bool:
-        return await self.__write("write_coils", address, {"values": values})
+    async def __write_coils(self, address: int, values: list[int] | int) -> bool:
+        return await self.__write(self.__client.write_coils, {
+            "address": address,
+            "values": values,
+        })
 
-    async def write_registers(self, address: int, values: list[int] | int) -> bool:
-        return await self.__write("write_registers", address, {"values": values})
+    async def __write_registers(self, address: int, values: list[int] | int) -> bool:
+        return await self.__write(self.__client.write_registers, {
+            "address": address,
+            "values": values,
+        })
 
-    @classmethod
-    def get_reconnect_interval(cls) -> int:
-        return cls.__reconnect_interval
+    def __create_temp_client(self) -> DMAioModbusTempClientInterface:
+        allowed_methods = {
+            "read_coils": self.__read_coils,
+            "read_discrete_inputs": self.__read_discrete_inputs,
+            "read_holding_registers": self.__read_holding_registers,
+            "read_input_registers": self.__read_input_registers,
+            "write_coil": self.__write_coil,
+            "write_register": self.__write_register,
+            "write_coils": self.__write_coils,
+            "write_registers": self.__write_registers
+        }
 
-    @classmethod
-    def set_reconnect_interval(cls, interval: int) -> None:
-        if not isinstance(interval, int):
-            print(f"Invalid interval type: expected 'int', got {type(interval)}")
-            return
-        if interval < 1:
-            print(f"Reconnect interval must be > 1")
-            return
-        cls.__reconnect_interval = interval
+        class TempClient(DMAioModbusTempClientInterface):
+            def __init__(self):
+                for name, method in allowed_methods.items():
+                    setattr(self, name, method)
+
+        return TempClient()
 
     @classmethod
     def set_logger(cls, logger) -> None:
-        if (hasattr(logger, "info") and isinstance(logger.info, Callable) and
+        if (hasattr(logger, "debug") and isinstance(logger.debug, Callable) and
+            hasattr(logger, "info") and isinstance(logger.info, Callable) and
             hasattr(logger, "warning") and isinstance(logger.warning, Callable) and
             hasattr(logger, "error") and isinstance(logger.error, Callable)
         ):

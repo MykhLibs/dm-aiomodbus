@@ -13,7 +13,8 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
         bytesize: int = 8,
         stopbits: int = 2,
         parity: str = "N",
-        name_tag: str = None
+        disconnect_time: int = 5,
+        name_tag: str = None,
     ) -> None:
         modbus_config = {
             "port": port,
@@ -22,30 +23,10 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
             "stopbits": stopbits,
             "parity": parity
         }
-        super().__init__(aio_modbus_lib_class=AsyncModbusSerialClient, modbus_config=modbus_config, name_tag=name_tag)
-
-    @classmethod
-    async def temp_connect(
-        cls,
-        callback: DMAioModbusBaseClient._TEMP_CALLBACK_TYPE,
-        port: str,
-        baudrate: int = 9600,
-        bytesize: int = 8,
-        stopbits: int = 2,
-        parity: str = "N",
-        name_tag: str = None
-    ):
-        modbus_config = {
-            "port": port,
-            "baudrate": baudrate,
-            "bytesize": bytesize,
-            "stopbits": stopbits,
-            "parity": parity
-        }
-        return await super().temp_connect(
-            callback,
+        super().__init__(
             aio_modbus_lib_class=AsyncModbusSerialClient,
             modbus_config=modbus_config,
+            disconnect_time=disconnect_time,
             name_tag=name_tag
         )
 
@@ -55,29 +36,16 @@ class DMAioModbusTcpClient(DMAioModbusBaseClient):
         self,
         host: str,
         port: str,
+        disconnect_time: int = 5,
         name_tag: str = None
     ) -> None:
         modbus_config = {
             "host": host,
             "port": port
         }
-        super().__init__(aio_modbus_lib_class=AsyncModbusTcpClient, modbus_config=modbus_config, name_tag=name_tag)
-
-    @classmethod
-    async def temp_connect(
-        cls,
-        callback: DMAioModbusBaseClient._TEMP_CALLBACK_TYPE,
-        host: str,
-        port: str,
-        name_tag: str = None
-    ):
-        modbus_config = {
-            "host": host,
-            "port": port
-        }
-        return await super().temp_connect(
-            callback,
-            aio_modbus_lib_class=AsyncModbusSerialClient,
+        super().__init__(
+            aio_modbus_lib_class=AsyncModbusTcpClient,
             modbus_config=modbus_config,
+            disconnect_time=disconnect_time,
             name_tag=name_tag
         )
