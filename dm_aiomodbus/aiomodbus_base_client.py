@@ -44,7 +44,7 @@ class DMAioModbusBaseClient:
                 await self.__connect()
 
             temp_cb = None
-            while self.__actions:
+            while self.__actions or callable(temp_cb):
                 if callable(temp_cb):
                     cb = temp_cb
                 else:
@@ -65,6 +65,8 @@ class DMAioModbusBaseClient:
                         temp_cb = None
                     else:
                         temp_cb = cb
+                else:
+                    temp_cb = None
             self.__is_locked = False
             self.__wait_on_disconnect()
 
