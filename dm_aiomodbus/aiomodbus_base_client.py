@@ -17,7 +17,8 @@ class DMAioModbusBaseClient:
         self,
         aio_modbus_lib_class: Type[AsyncModbusSerialClient | AsyncModbusTcpClient],
         modbus_config: dict[str, str | int],
-        disconnect_time: float = 5,
+        disconnect_timeout_s: float = 5,
+        after_execute_timeout_ms: float = 0.003,
         name_tag: str = None
     ) -> None:
         if self.__logger is None:
@@ -27,7 +28,8 @@ class DMAioModbusBaseClient:
 
         self.__actions = []
         self.__is_locked = False
-        self.__disconnect_time = disconnect_time
+        self.__disconnect_time_s = disconnect_timeout_s if disconnect_timeout_s >= 0 else 1
+        self.__after_execute_timeout_ms = after_execute_timeout_ms if after_execute_timeout_ms >= 0 else 1
         self.__temp_client = self.__create_temp_client()
         self.__client = aio_modbus_lib_class(**modbus_config, timeout=1, retry=1)
 
@@ -100,7 +102,7 @@ class DMAioModbusBaseClient:
         async def disconnect() -> None:
             wait_time = 0
             while not self.__is_locked:
-                if wait_time > self.__disconnect_time:
+                if wait_time > self.__disconnect_time_s:
                     if self.__is_connected:
                         self.__logger.info("Disconnected!")
                         self.__client.close()
@@ -113,6 +115,7 @@ class DMAioModbusBaseClient:
         kwargs = {**kwargs, "slave": 1}
         try:
             result = await method(**kwargs)
+            await asyncio.sleep(self.__after_execute_timeout_ms)
             if result.isError() or isinstance(result, ExceptionResponse):
                 raise ModbusException(f"Received error: {result}")
             return result
