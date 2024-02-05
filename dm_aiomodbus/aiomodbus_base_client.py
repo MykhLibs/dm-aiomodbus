@@ -81,10 +81,9 @@ class DMAioModbusBaseClient:
 
         self.execute(return_from_callback)
 
-        wait_time = 0
-        while not result_obj["executed"]:
-            if wait_time > timeout:
-                break
+        wait_time = 1.5
+        timeout = timeout if timeout > 0 else 1
+        while not result_obj["executed"] and wait_time < timeout:
             await asyncio.sleep(0.001)
             wait_time += 0.001
 
