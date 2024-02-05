@@ -18,7 +18,7 @@ class DMAioModbusBaseClient:
         aio_modbus_lib_class: Type[AsyncModbusSerialClient | AsyncModbusTcpClient],
         modbus_config: dict[str, str | int],
         disconnect_timeout_s: float = 5,
-        after_execute_timeout_ms: float = 0.003,
+        after_execute_timeout_ms: float = 3,
         name_tag: str = None
     ) -> None:
         if self.__logger is None:
@@ -29,7 +29,7 @@ class DMAioModbusBaseClient:
         self.__actions = []
         self.__is_locked = False
         self.__disconnect_time_s = disconnect_timeout_s if disconnect_timeout_s >= 0 else 1
-        self.__after_execute_timeout_ms = after_execute_timeout_ms if after_execute_timeout_ms >= 0 else 1
+        self.__after_execute_timeout_ms = after_execute_timeout_ms / 1000 if after_execute_timeout_ms >= 0 else 0.000
         self.__temp_client = self.__create_temp_client()
         self.__client = aio_modbus_lib_class(**modbus_config, timeout=1, retry=1)
 
@@ -53,6 +53,7 @@ class DMAioModbusBaseClient:
                         cb_type = None if cb is None else type(cb)
                         self.__logger.error(f"Invalid callback: Expected callable, got {cb_type}")
                         continue
+
                 try:
                     await cb(self.__temp_client)
                 except Exception as e:
@@ -84,8 +85,8 @@ class DMAioModbusBaseClient:
         wait_time = 1.5
         timeout = timeout if timeout > 0 else 1
         while not result_obj["executed"] and wait_time < timeout:
-            await asyncio.sleep(0.001)
-            wait_time += 0.001
+            await asyncio.sleep(0.01)
+            wait_time += 0.01
 
         return result_obj["result"]
 
@@ -109,8 +110,8 @@ class DMAioModbusBaseClient:
                     if self.__is_connected:
                         self.__logger.info("Disconnected!")
                         self.__client.close()
-                await asyncio.sleep(0.001)
-                wait_time += 0.001
+                await asyncio.sleep(0.1)
+                wait_time += 0.1
 
         _ = asyncio.create_task(disconnect())
 

@@ -14,7 +14,7 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
         stopbits: int = 2,
         parity: str = "N",
         disconnect_timeout_s: int = 5,
-        after_execute_timeout_ms: float = 0.003,
+        after_execute_timeout_ms: float = 3,
         name_tag: str = None,
     ) -> None:
         modbus_config = {
@@ -24,6 +24,7 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
             "stopbits": stopbits,
             "parity": parity
         }
+        name_tag = name_tag or port
         super().__init__(
             aio_modbus_lib_class=AsyncModbusSerialClient,
             modbus_config=modbus_config,
@@ -39,13 +40,14 @@ class DMAioModbusTcpClient(DMAioModbusBaseClient):
         host: str,
         port: str,
         disconnect_timeout_s: int = 5,
-        after_execute_timeout_ms: float = 0.003,
+        after_execute_timeout_ms: float = 3,
         name_tag: str = None
     ) -> None:
         modbus_config = {
             "host": host,
             "port": port
         }
+        name_tag = name_tag or f"{host}:{port}"
         super().__init__(
             aio_modbus_lib_class=AsyncModbusTcpClient,
             modbus_config=modbus_config,
