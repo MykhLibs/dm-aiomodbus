@@ -7,7 +7,7 @@ def readme():
 
 
 setup(
-    name='dm-aiomqtt',
+    name='dm-aiomodbus',
     version='0.0.0',
     author='dimka4621',
     author_email='mismartconfig@gmail.com',
