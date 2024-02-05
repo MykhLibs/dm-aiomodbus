@@ -94,10 +94,12 @@ class DMAioModbusBaseClient:
         return self.__client.connected
 
     async def __connect(self) -> None:
-        if await self.__client.connect():
+        try:
+            if not await self.__client.connect():
+                raise ConnectionError("No connection established")
             self.__logger.info("Connected!")
-        else:
-            self.__logger.error(f"Connection error: No connection established")
+        except Exception as e:
+            self.__logger.error(f"Connection error: {e}")
 
     def __wait_on_disconnect(self) -> None:
         async def disconnect() -> None:
