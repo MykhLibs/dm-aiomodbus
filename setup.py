@@ -17,16 +17,16 @@ setup(
     url='https://pypi.org/project/dm-aiomodbus',
     packages=find_packages(),
     install_requires=[
-        'dm-logger == 0.5.2',
-        'pyserial == 3.5',
-        'pymodbus == 3.6.3',
+        'dm-logger==0.5.2',
+        'pyserial==3.5',
+        'pymodbus==3.6.3',
     ],
     classifiers=[
         'Programming Language :: Python :: 3.8',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent'
     ],
-    keywords='dm aiomqtt',
+    keywords='dm aiomodbus',
     project_urls={
         'GitHub': 'https://github.com/DIMKA4621/dm-aiomodbus'
     },
