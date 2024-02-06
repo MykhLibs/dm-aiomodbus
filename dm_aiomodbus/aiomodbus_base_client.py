@@ -124,7 +124,7 @@ class DMAioModbusBaseClient:
                 raise ModbusException(f"Received error: {result}")
             return result
         except Exception as e:
-            self.__logger.error(f"Error: {e}", params=kwargs)
+            self.__logger.error(f"Error: {e}", method=method.__name__, params=kwargs)
             if not self.__is_connected:
                 await self.__connect()
 
