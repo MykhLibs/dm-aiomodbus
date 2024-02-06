@@ -17,7 +17,7 @@ class DMAioModbusBaseClient:
         self,
         aio_modbus_lib_class: Type[AsyncModbusSerialClient | AsyncModbusTcpClient],
         modbus_config: dict[str, str | int],
-        disconnect_timeout_s: float = 5,
+        disconnect_timeout_s: float = 20,
         after_execute_timeout_ms: float = 3,
         name_tag: str = None
     ) -> None:
@@ -28,6 +28,7 @@ class DMAioModbusBaseClient:
 
         self.__actions = []
         self.__is_locked = False
+        self.__disconnect_task = None
         self.__disconnect_time_s = disconnect_timeout_s if disconnect_timeout_s >= 0 else 1
         self.__after_execute_timeout_ms = after_execute_timeout_ms / 1000 if after_execute_timeout_ms >= 0 else 0.000
         self.__temp_client = self.__create_temp_client()
@@ -40,6 +41,9 @@ class DMAioModbusBaseClient:
                 return
 
             self.__is_locked = True
+            if self.__disconnect_task is not None:
+                self.__disconnect_task.cancel()
+
             if not self.__is_connected:
                 await self.__connect()
 
@@ -68,8 +72,9 @@ class DMAioModbusBaseClient:
                         temp_cb = cb
                 else:
                     temp_cb = None
+
             self.__is_locked = False
-            self.__wait_on_disconnect()
+            self.__disconnect_task = asyncio.create_task(self.__wait_on_disconnect())
 
         _ = asyncio.create_task(_execute())
 
@@ -102,18 +107,15 @@ class DMAioModbusBaseClient:
         except Exception as e:
             self.__logger.error(f"Connection error: {e}")
 
-    def __wait_on_disconnect(self) -> None:
-        async def disconnect() -> None:
-            wait_time = 0
-            while not self.__is_locked:
-                if wait_time > self.__disconnect_time_s:
-                    if self.__is_connected:
-                        self.__logger.info("Disconnected!")
-                        self.__client.close()
-                await asyncio.sleep(0.1)
-                wait_time += 0.1
+    async def __wait_on_disconnect(self) -> None:
+        wait_time = 0
+        while wait_time < self.__disconnect_time_s:
+            await asyncio.sleep(0.1)
+            wait_time += 0.1
 
-        _ = asyncio.create_task(disconnect())
+        if self.__is_connected:
+            self.__logger.info("Disconnected!")
+            self.__client.close()
 
     async def __error_handler(self, method: Callable, kwargs: dict) -> None:
         kwargs = {**kwargs, "slave": 1}
