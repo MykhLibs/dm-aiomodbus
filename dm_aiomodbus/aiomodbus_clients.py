@@ -13,8 +13,8 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
         bytesize: int = 8,
         stopbits: int = 2,
         parity: str = "N",
-        disconnect_timeout_s: int = 5,
-        after_execute_timeout_ms: float = 3,
+        disconnect_timeout_s: int = None,
+        after_execute_timeout_ms: int = None,
         name_tag: str = None,
     ) -> None:
         modbus_config = {
@@ -39,8 +39,8 @@ class DMAioModbusTcpClient(DMAioModbusBaseClient):
         self,
         host: str,
         port: str,
-        disconnect_timeout_s: int = 5,
-        after_execute_timeout_ms: float = 3,
+        disconnect_timeout_s: int = None,
+        after_execute_timeout_ms: int = None,
         name_tag: str = None
     ) -> None:
         modbus_config = {

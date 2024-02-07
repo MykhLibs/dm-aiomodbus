@@ -11,26 +11,27 @@ __all__ = ['DMAioModbusBaseClient']
 
 class DMAioModbusBaseClient:
     _TEMP_CALLBACK_TYPE = Callable[[DMAioModbusTempClientInterface], Coroutine]
-    __logger = None
+    _logger = None
 
     def __init__(
         self,
         aio_modbus_lib_class: Type[AsyncModbusSerialClient | AsyncModbusTcpClient],
         modbus_config: dict[str, str | int],
-        disconnect_timeout_s: float = 20,
-        after_execute_timeout_ms: float = 3,
+        disconnect_timeout_s: int = 20,
+        after_execute_timeout_ms: int = 3,
         name_tag: str = None
     ) -> None:
-        if self.__logger is None:
+        if self._logger is None:
             name_suffix = f"-{name_tag}" if name_tag is not None else ""
-            self.__logger = DMLogger(f"{self.__class__.__name__}{name_suffix}")
-        self.__logger.debug(**modbus_config)
+            self._logger = DMLogger(f"{self.__class__.__name__}{name_suffix}")
+        self._logger.debug(**modbus_config)
 
         self.__actions = []
         self.__is_locked = False
         self.__disconnect_task = None
-        self.__disconnect_time_s = disconnect_timeout_s if disconnect_timeout_s >= 0 else 1
-        self.__after_execute_timeout_ms = after_execute_timeout_ms / 1000 if after_execute_timeout_ms >= 0 else 0.000
+        self.__disconnect_time_s, self.__after_execute_timeout_ms = self.__validate_timeouts(
+            disconnect_timeout_s, after_execute_timeout_ms
+        )
         self.__temp_client = self.__create_temp_client()
         self.__client = aio_modbus_lib_class(**modbus_config, timeout=1, retry=1)
 
@@ -44,8 +45,8 @@ class DMAioModbusBaseClient:
             if self.__disconnect_task is not None:
                 self.__disconnect_task.cancel()
 
-            if not self.__is_connected:
-                await self.__connect()
+            if not self._is_connected:
+                await self._connect()
 
             temp_cb = None
             while self.__actions or callable(temp_cb):
@@ -55,17 +56,17 @@ class DMAioModbusBaseClient:
                     cb = self.__actions.pop(0)
                     if not callable(cb):
                         cb_type = None if cb is None else type(cb)
-                        self.__logger.error(f"Invalid callback: Expected callable, got {cb_type}")
+                        self._logger.error(f"Invalid callback: Expected callable, got {cb_type}")
                         continue
 
                 try:
                     await cb(self.__temp_client)
                 except Exception as e:
-                    if not self.__is_connected:
-                        self.__logger.error(f"Connection error: {e}.\nReconnecting...")
-                        await self.__connect()
+                    if not self._is_connected:
+                        self._logger.error(f"Connection error: {e}.\nReconnecting...")
+                        await self._connect()
                     else:
-                        self.__logger.error(e)
+                        self._logger.error(e)
                     if callable(temp_cb):
                         temp_cb = None
                     else:
@@ -96,23 +97,26 @@ class DMAioModbusBaseClient:
         return result_obj["result"]
 
     @property
-    def __is_connected(self) -> bool:
+    def _is_connected(self) -> bool:
         return self.__client.connected
 
-    async def __connect(self) -> None:
+    async def _connect(self) -> None:
         try:
             if not await self.__client.connect():
                 raise ConnectionError("No connection established")
-            self.__logger.info("Connected!")
+            self._logger.info("Connected!")
         except Exception as e:
-            self.__logger.error(f"Connection error: {e}")
+            self._logger.error(f"Connection error: {e}")
+
+    def _disconnect(self) -> None:
+        self.__client.close()
+        self._logger.info("Disconnected!")
 
     async def __wait_on_disconnect(self) -> None:
         await asyncio.sleep(self.__disconnect_time_s)
 
-        if self.__is_connected:
-            self.__logger.info("Disconnected!")
-            self.__client.close()
+        if self._is_connected:
+            self._disconnect()
 
     async def __error_handler(self, method: Callable, kwargs: dict) -> None:
         kwargs = {**kwargs, "slave": 1}
@@ -123,62 +127,62 @@ class DMAioModbusBaseClient:
                 raise ModbusException(f"Received error: {result}")
             return result
         except Exception as e:
-            self.__logger.error(f"Error: {e}", method=method.__name__, params=kwargs)
-            if not self.__is_connected:
-                await self.__connect()
+            self._logger.error(f"Error: {e}", method=method.__name__, params=kwargs)
+            if not self._is_connected:
+                await self._connect()
 
-    async def __read(self, method, kwargs: dict) -> list | None:
+    async def _read(self, method, kwargs: dict) -> list | None:
         result = await self.__error_handler(method, kwargs)
         return result.registers if hasattr(result, "registers") else []
 
-    async def __write(self, method, kwargs: dict) -> bool:
+    async def _write(self, method, kwargs: dict) -> bool:
         result = await self.__error_handler(method, kwargs)
         return bool(result)
 
     async def __read_coils(self, address: int, count: int = 1) -> list | None:
-        return await self.__read(self.__client.read_coils, {
+        return await self._read(self.__client.read_coils, {
             "address": address,
             "count": count
         })
 
     async def __read_discrete_inputs(self, address: int, count: int = 1) -> list | None:
-        return await self.__read(self.__client.read_discrete_inputs, {
+        return await self._read(self.__client.read_discrete_inputs, {
             "address": address,
             "count": count
         })
 
     async def __read_holding_registers(self, address: int, count: int = 1) -> list | None:
-        return await self.__read(self.__client.read_holding_registers, {
+        return await self._read(self.__client.read_holding_registers, {
             "address": address,
             "count": count
         })
 
     async def __read_input_registers(self, address: int, count: int = 1) -> list | None:
-        return await self.__read(self.__client.read_input_registers, {
+        return await self._read(self.__client.read_input_registers, {
             "address": address,
             "count": count
         })
 
     async def __write_coil(self, address: int, value: int) -> bool:
-        return await self.__write(self.__client.write_coil, {
+        return await self._write(self.__client.write_coil, {
             "address": address,
             "value": value,
         })
 
     async def __write_register(self, address: int, value: int) -> bool:
-        return await self.__write(self.__client.write_register, {
+        return await self._write(self.__client.write_register, {
             "address": address,
             "value": value,
         })
 
     async def __write_coils(self, address: int, values: list[int] | int) -> bool:
-        return await self.__write(self.__client.write_coils, {
+        return await self._write(self.__client.write_coils, {
             "address": address,
             "values": values,
         })
 
     async def __write_registers(self, address: int, values: list[int] | int) -> bool:
-        return await self.__write(self.__client.write_registers, {
+        return await self._write(self.__client.write_registers, {
             "address": address,
             "values": values,
         })
@@ -202,6 +206,19 @@ class DMAioModbusBaseClient:
 
         return TempClient()
 
+    def __validate_timeouts(self, disconnect_timeout_s: int, after_execute_timeout_ms: int) -> (int, int):
+        if not isinstance(disconnect_timeout_s, int) or disconnect_timeout_s < 0:
+            if disconnect_timeout_s is not None:
+                self._logger.warning("Invalid disconnect_timeout_s value. Expected: value > 0. "
+                                     "Is set to default value: 20")
+            disconnect_timeout_s = 20
+        if not isinstance(after_execute_timeout_ms, int) or after_execute_timeout_ms < 0:
+            if after_execute_timeout_ms is not None:
+                self._logger.warning("Invalid after_execute_timeout_ms value. Expected: value > 0. "
+                                     "Is set to default value: 3")
+            after_execute_timeout_ms = 3
+        return disconnect_timeout_s, after_execute_timeout_ms / 1000
+
     @classmethod
     def set_logger(cls, logger) -> None:
         if (hasattr(logger, "debug") and isinstance(logger.debug, Callable) and
@@ -209,6 +226,6 @@ class DMAioModbusBaseClient:
             hasattr(logger, "warning") and isinstance(logger.warning, Callable) and
             hasattr(logger, "error") and isinstance(logger.error, Callable)
         ):
-            cls.__logger = logger
+            cls._logger = logger
         else:
             print("Invalid logger")
