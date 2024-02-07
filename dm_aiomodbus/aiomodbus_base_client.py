@@ -108,10 +108,7 @@ class DMAioModbusBaseClient:
             self.__logger.error(f"Connection error: {e}")
 
     async def __wait_on_disconnect(self) -> None:
-        wait_time = 0
-        while wait_time < self.__disconnect_time_s:
-            await asyncio.sleep(0.1)
-            wait_time += 0.1
+        await asyncio.sleep(self.__disconnect_time_s)
 
         if self.__is_connected:
             self.__logger.info("Disconnected!")
