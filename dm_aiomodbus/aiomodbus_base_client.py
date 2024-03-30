@@ -119,12 +119,11 @@ class DMAioModbusBaseClient:
             self._disconnect()
 
     async def __error_handler(self, method: Callable, kwargs: dict) -> None:
-        kwargs = {**kwargs, "slave": 1}
         try:
             result = await method(**kwargs)
             await asyncio.sleep(self.__after_execute_timeout_ms)
             if result.isError() or isinstance(result, ExceptionResponse):
-                raise ModbusException(f"Received error: {result}")
+                raise ModbusException(result)
             return result
         except Exception as e:
             self._logger.error(f"Error: {e}", method=method.__name__, params=kwargs)
@@ -139,52 +138,60 @@ class DMAioModbusBaseClient:
         result = await self.__error_handler(method, kwargs)
         return bool(result)
 
-    async def __read_coils(self, address: int, count: int = 1) -> list | None:
+    async def __read_coils(self, address: int, count: int = 1, slave: int = 1) -> list | None:
         return await self._read(self.__client.read_coils, {
             "address": address,
-            "count": count
+            "count": count,
+            "slave": slave
         })
 
-    async def __read_discrete_inputs(self, address: int, count: int = 1) -> list | None:
+    async def __read_discrete_inputs(self, address: int, count: int = 1, slave: int = 1) -> list | None:
         return await self._read(self.__client.read_discrete_inputs, {
             "address": address,
-            "count": count
+            "count": count,
+            "slave": slave
         })
 
-    async def __read_holding_registers(self, address: int, count: int = 1) -> list | None:
+    async def __read_holding_registers(self, address: int, count: int = 1, slave: int = 1) -> list | None:
         return await self._read(self.__client.read_holding_registers, {
             "address": address,
-            "count": count
+            "count": count,
+            "slave": slave
         })
 
-    async def __read_input_registers(self, address: int, count: int = 1) -> list | None:
+    async def __read_input_registers(self, address: int, count: int = 1, slave: int = 1) -> list | None:
         return await self._read(self.__client.read_input_registers, {
             "address": address,
-            "count": count
+            "count": count,
+            "slave": slave
         })
 
-    async def __write_coil(self, address: int, value: int) -> bool:
+    async def __write_coil(self, address: int, value: int, slave: int = 1) -> bool:
         return await self._write(self.__client.write_coil, {
             "address": address,
             "value": value,
+            "slave": slave
         })
 
-    async def __write_register(self, address: int, value: int) -> bool:
+    async def __write_register(self, address: int, value: int, slave: int = 1) -> bool:
         return await self._write(self.__client.write_register, {
             "address": address,
             "value": value,
+            "slave": slave
         })
 
-    async def __write_coils(self, address: int, values: list[int] | int) -> bool:
+    async def __write_coils(self, address: int, values: list[int] | int, slave: int = 1) -> bool:
         return await self._write(self.__client.write_coils, {
             "address": address,
             "values": values,
+            "slave": slave
         })
 
-    async def __write_registers(self, address: int, values: list[int] | int) -> bool:
+    async def __write_registers(self, address: int, values: list[int] | int, slave: int = 1) -> bool:
         return await self._write(self.__client.write_registers, {
             "address": address,
             "values": values,
+            "slave": slave
         })
 
     def __create_temp_client(self) -> DMAioModbusTempClientInterface:

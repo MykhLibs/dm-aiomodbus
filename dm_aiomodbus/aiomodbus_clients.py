@@ -38,7 +38,7 @@ class DMAioModbusTcpClient(DMAioModbusBaseClient):
     def __init__(
         self,
         host: str,
-        port: str,
+        port: int,
         disconnect_timeout_s: int = None,
         after_execute_timeout_ms: int = None,
         name_tag: str = None
