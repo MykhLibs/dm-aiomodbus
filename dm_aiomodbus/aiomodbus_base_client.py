@@ -139,8 +139,9 @@ class DMAioModbusBaseClient:
         return (result.registers, error) if hasattr(result, "registers") else ([], error)
 
     async def _write(self, method, kwargs: dict) -> (bool, str):
-        result, error = await self.__error_handler(method, kwargs)
-        return (bool(result), error)
+        _, error = await self.__error_handler(method, kwargs)
+        result = not error
+        return (result, error)
 
     async def __read_coils(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
         return await self._read(self.__client.read_coils, {
