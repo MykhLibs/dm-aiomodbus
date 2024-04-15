@@ -50,14 +50,14 @@ async def main():
 
     # create read callback
     async def read_callback(client: DMAioModbusTempClientInterface):
-        reg_258_259 = await client.read_holding_registers(258, count=2)
-        reg_256 = await client.read_holding_registers(256)
-        reg_260_2 = await client.read_holding_registers(address=260, slave=2)  # read second slave-device
+        reg_258_259, err1 = await client.read_holding_registers(258, count=2)  # get values and error if any
+        reg_256, err2 = await client.read_holding_registers(256)
+        reg_260_2, err3 = await client.read_holding_registers(address=260, slave=2)  # read second slave-device
         print(reg_258_259, reg_256, reg_260_2)
 
     # create read callback
     async def write_callback(client: DMAioModbusTempClientInterface):
-        await client.write_register(256, 1)
+        status, err = await client.write_register(256, 1)  # get write status and error if any
         await client.write_register(260, value=0, slave=2)  # write second slave-device
 
     # request to plc
