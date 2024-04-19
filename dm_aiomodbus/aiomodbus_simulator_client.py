@@ -12,7 +12,7 @@ class DMAioModbusSimulatorClient(DMAioModbusBaseClient):
     ):
         super().__init__(
             aio_modbus_lib_class=AsyncModbusTcpClient,
-            modbus_config={"host": "192.168.0.0"},
+            modbus_config={"host": "simulator"},
             disconnect_timeout_s=disconnect_timeout_s,
             after_execute_timeout_ms=after_execute_timeout_ms,
             name_tag=name_tag
@@ -31,8 +31,9 @@ class DMAioModbusSimulatorClient(DMAioModbusBaseClient):
         self.__connected = False
         self._logger.info("Disconnected!")
 
-    async def _read(self, method, kwargs: dict) -> list | None:
-        return [i for i in range(kwargs["count"])]
+    async def _read(self, method, kwargs: dict) -> (list, str):
+        registers = [i for i in range(kwargs["count"])]
+        return (registers, "")
 
-    async def _write(self, method, kwargs: dict) -> bool:
-        return True
+    async def _write(self, method, kwargs: dict) -> (bool, str):
+        return (True, "")
