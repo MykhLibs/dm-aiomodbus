@@ -25,11 +25,9 @@ class DMAioModbusSimulatorClient(DMAioModbusBaseClient):
 
     async def _connect(self) -> None:
         self.__connected = True
-        self._logger.info("Connected!")
 
     def _disconnect(self) -> None:
         self.__connected = False
-        self._logger.info("Disconnected!")
 
     async def _read(self, method, kwargs: dict) -> (list, str):
         registers = [i for i in range(kwargs["count"])]
