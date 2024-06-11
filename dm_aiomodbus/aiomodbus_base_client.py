@@ -17,6 +17,7 @@ class DMAioModbusBaseClient:
         self,
         aio_modbus_lib_class: Type[AsyncModbusSerialClient | AsyncModbusTcpClient],
         modbus_config: dict[str, str | int],
+        return_errors: bool = False,
         execute_timeout_s: int = 5,
         disconnect_timeout_s: int = 20,
         after_execute_timeout_ms: int = 3,
@@ -31,86 +32,91 @@ class DMAioModbusBaseClient:
         self.__is_locked = False
         self.__current_group = False
         self.__disconnect_task = None
+        self._return_errors = bool(return_errors)
         self.__execute_timeout_s, self.__disconnect_time_s, self.__after_execute_timeout_ms = self.__validate_timeouts(
             execute_timeout_s, disconnect_timeout_s, after_execute_timeout_ms
         )
         self.__client = aio_modbus_lib_class(**modbus_config, timeout=1, retry=1)
 
-    async def read_coils(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
+    async def read_coils(self, address: int, count: int = 1, slave: int = 1) -> list | (list, str):
         return await self._read(self.__client.read_coils, {
             "address": address,
             "count": count,
             "slave": slave
         })
 
-    async def read_discrete_inputs(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
+    async def read_discrete_inputs(self, address: int, count: int = 1, slave: int = 1) -> list | (list, str):
         return await self._read(self.__client.read_discrete_inputs, {
             "address": address,
             "count": count,
             "slave": slave
         })
 
-    async def read_holding_registers(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
+    async def read_holding_registers(self, address: int, count: int = 1, slave: int = 1) -> list | (list, str):
         return await self._read(self.__client.read_holding_registers, {
             "address": address,
             "count": count,
             "slave": slave
         })
 
-    async def read_input_registers(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
+    async def read_input_registers(self, address: int, count: int = 1, slave: int = 1) -> list | (list, str):
         return await self._read(self.__client.read_input_registers, {
             "address": address,
             "count": count,
             "slave": slave
         })
 
-    async def write_coil(self, address: int, value: int, slave: int = 1) -> (bool, str):
+    async def write_coil(self, address: int, value: int, slave: int = 1) -> bool | (bool, str):
         return await self._write(self.__client.write_coil, {
             "address": address,
             "value": value,
             "slave": slave
         })
 
-    async def write_register(self, address: int, value: int, slave: int = 1) -> (bool, str):
+    async def write_register(self, address: int, value: int, slave: int = 1) -> bool | (bool, str):
         return await self._write(self.__client.write_register, {
             "address": address,
             "value": value,
             "slave": slave
         })
 
-    async def write_coils(self, address: int, values: list[int] | int, slave: int = 1) -> (bool, str):
+    async def write_coils(self, address: int, values: list[int] | int, slave: int = 1) -> bool | (bool, str):
         return await self._write(self.__client.write_coils, {
             "address": address,
             "values": values,
             "slave": slave
         })
 
-    async def write_registers(self, address: int, values: list[int] | int, slave: int = 1) -> (bool, str):
+    async def write_registers(self, address: int, values: list[int] | int, slave: int = 1) -> bool | (bool, str):
         return await self._write(self.__client.write_registers, {
             "address": address,
             "values": values,
             "slave": slave
         })
 
-    async def _read(self, method: Callable, kwargs: dict) -> (list, str):
+    async def _read(self, method: Callable, kwargs: dict) -> list | (list, str):
         async def read_cb() -> (list, str):
             result, error = await self.__error_handler(method, kwargs)
-            return (result.registers, error) if hasattr(result, "registers") else ([], error)
+            if self._return_errors:
+                return (result.registers, error) if hasattr(result, "registers") else ([], error)
+            return result.registers if hasattr(result, "registers") else []
 
         return await self._execute_and_return(read_cb)
 
-    async def _write(self, method: Callable, kwargs: dict) -> (bool, str):
+    async def _write(self, method: Callable, kwargs: dict) -> bool | (bool, str):
         async def write_cb() -> (bool, str):
             _, error = await self.__error_handler(method, kwargs)
             result = not error
-            return (result, error)
+            if self._return_errors:
+                return (result, error)
+            return result
 
         return await self._execute_and_return(write_cb)
 
-    async def _execute_and_return(self, callback: _CALLBACK_TYPE):
+    async def _execute_and_return(self, callback: _CALLBACK_TYPE) -> (list | bool, str):
         result_obj = {"result": None, "executed": False}
 
-        async def return_from_callback():
+        async def return_from_callback() -> None:
             result_obj["result"] = await callback()
             result_obj["executed"] = True
 
