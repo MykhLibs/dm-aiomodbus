@@ -5,7 +5,7 @@
 * [PyPI](https://pypi.org/project/dm-aiomodbus)
 * [GitHub](https://github.com/DIMKA4621/dm-aiomodbus)
 
-## Usage
+## Example
 
 ### Connection
 
@@ -18,8 +18,7 @@
        baudrate=9600,
        bytesize=8,
        stopbits=2,
-       parity="N",
-       name_tag="my_serial_plc"
+       parity="N"
    )
    ```
 
@@ -29,14 +28,23 @@
 
    modbus_client = DMAioModbusTcpClient(
        host="192.168.0.0",
-       port=501,
-       name_tag="my_tcp_plc"
+       port=501
    )
    ```
 
-### Requests
+* Simulator _(always returns mock data)_
+   ```python
+   from dm_aiomodbus import DMAioModbusSimulatorClient
+
+   modbus_client = DMAioModbusSimulatorClient()
+   ```
+
+### Usage
+
+* _**Usual**_ client
+
 ```python
-from dm_aiomodbus import DMAioModbusTcpClient, DMAioModbusTempClientInterface
+from dm_aiomodbus import DMAioModbusTcpClient
 import asyncio
 
 
@@ -48,22 +56,49 @@ async def main():
         name_tag="my_tcp_plc"
     )
 
-    # create read callback
-    async def read_callback(client: DMAioModbusTempClientInterface):
-        reg_258_259, err1 = await client.read_holding_registers(258, count=2)  # get values and error if any
-        reg_256, err2 = await client.read_holding_registers(256)
-        reg_260_2, err3 = await client.read_holding_registers(address=260, slave=2)  # read second slave-device
-        print(reg_258_259, reg_256, reg_260_2)
+    # read registers
+    reg_258_259, = await modbus_client.read_holding_registers(258, count=2)
+    reg_256 = await modbus_client.read_holding_registers(256)
+    # read second slave-device
+    reg_260_2 = await modbus_client.read_holding_registers(address=260, slave=2)
+    print(reg_258_259, reg_256, reg_260_2)
 
-    # create read callback
-    async def write_callback(client: DMAioModbusTempClientInterface):
-        status, err = await client.write_register(256, 1)  # get write status and error if any
-        await client.write_register(260, value=0, slave=2)  # write second slave-device
+    # write registers
+    status_256 = await modbus_client.write_register(256, 1)
+    print(status_256)
+    # write second slave-device
+    await modbus_client.write_register(260, value=0, slave=2)
 
-    # request to plc
-    modbus_client.execute(read_callback)  # execute without waiting result
-    # or
-    await modbus_client.execute_and_return(write_callback, timeout=3)  # execute and wait result with timeout 3s (default 5)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+* _**Return-errors**_ client
+
+Error messages are returned with the execution result
+```python
+from dm_aiomodbus import DMAioModbusTcpClient
+import asyncio
+
+
+async def main():
+    # create client
+    modbus_client = DMAioModbusTcpClient(
+        host="192.168.0.0",
+        port=501,
+        return_errors=True
+    )
+
+    # read registers
+    # get values and error (if present, else "")
+    reg_258_259, err1 = await modbus_client.read_holding_registers(258, count=2)
+    print(reg_258_259, err1)
+
+    # write registers
+    # get write status and error (if present, else "")
+    status_256, err2 = await modbus_client.write_register(256, 1)
+    print(status_256, err2)
 
 
 if __name__ == "__main__":
@@ -72,17 +107,20 @@ if __name__ == "__main__":
 
 ### Optional init parameters
 
-| Parameter                  | Type  | Default Value | Description                                                         |
-|----------------------------|-------|---------------|---------------------------------------------------------------------|
-| `disconnect_timeout_s`     | `int` | `20`          | timeout waiting for an active connection after the last request (s) |
-| `after_execute_timeout_ms` | `int` | `3`           | timeout between requests (ms)                                       |
+| Parameter                  | Type   | Default Value | Description                                                         |
+|----------------------------|--------|---------------|---------------------------------------------------------------------|
+| `return_errors`            | `bool` | `False`       | Error messages are returned with the execution result               |
+| `execute_timeout_s`        | `int`  | `5`           | requests timeout (s)                                                |
+| `disconnect_timeout_s`     | `int`  | `20`          | timeout waiting for an active connection after the last request (s) |
+| `after_execute_timeout_ms` | `int`  | `3`           | timeout between requests (ms)                                       |
+| `name_tag`                 | `str`  | _auto_        | name tag for logger suffix                                          |
 
 ### Set custom logger
 
 _If you want set up custom logger_
 
 ```python
-from dm_aiomodbus import DMAioModbusTcpClient  # or another client
+from dm_aiomodbus import DMAioModbusTcpClient
 
 
 # create custom logger

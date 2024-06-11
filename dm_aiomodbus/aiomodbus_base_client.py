@@ -5,19 +5,20 @@ from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
 from pymodbus import ModbusException, ExceptionResponse
 from pymodbus.pdu import ModbusExceptions
 import asyncio
-from .aiomodbus_temp_client import DMAioModbusTempClientInterface
 
 __all__ = ['DMAioModbusBaseClient']
 
 
 class DMAioModbusBaseClient:
-    _TEMP_CALLBACK_TYPE = Callable[[DMAioModbusTempClientInterface], Coroutine]
+    _CALLBACK_TYPE = Callable[[], Coroutine]
     _logger = None
 
     def __init__(
         self,
         aio_modbus_lib_class: Type[AsyncModbusSerialClient | AsyncModbusTcpClient],
         modbus_config: dict[str, str | int],
+        return_errors: bool = False,
+        execute_timeout_s: int = 5,
         disconnect_timeout_s: int = 20,
         after_execute_timeout_ms: int = 3,
         name_tag: str = None
@@ -29,15 +30,124 @@ class DMAioModbusBaseClient:
 
         self.__actions = []
         self.__is_locked = False
+        self.__current_group = False
         self.__disconnect_task = None
-        self.__disconnect_time_s, self.__after_execute_timeout_ms = self.__validate_timeouts(
-            disconnect_timeout_s, after_execute_timeout_ms
+        self._return_errors = bool(return_errors)
+        self.__execute_timeout_s, self.__disconnect_time_s, self.__after_execute_timeout_ms = self.__validate_timeouts(
+            execute_timeout_s, disconnect_timeout_s, after_execute_timeout_ms
         )
-        self.__temp_client = self.__create_temp_client()
         self.__client = aio_modbus_lib_class(**modbus_config, timeout=1, retry=1)
 
-    def execute(self, callback: _TEMP_CALLBACK_TYPE) -> None:
-        async def _execute() -> None:
+    async def read_coils(self, address: int, count: int = 1, slave: int = 1) -> list | (list, str):
+        return await self._read(self.__client.read_coils, {
+            "address": address,
+            "count": count,
+            "slave": slave
+        })
+
+    async def read_discrete_inputs(self, address: int, count: int = 1, slave: int = 1) -> list | (list, str):
+        return await self._read(self.__client.read_discrete_inputs, {
+            "address": address,
+            "count": count,
+            "slave": slave
+        })
+
+    async def read_holding_registers(self, address: int, count: int = 1, slave: int = 1) -> list | (list, str):
+        return await self._read(self.__client.read_holding_registers, {
+            "address": address,
+            "count": count,
+            "slave": slave
+        })
+
+    async def read_input_registers(self, address: int, count: int = 1, slave: int = 1) -> list | (list, str):
+        return await self._read(self.__client.read_input_registers, {
+            "address": address,
+            "count": count,
+            "slave": slave
+        })
+
+    async def write_coil(self, address: int, value: int, slave: int = 1) -> bool | (bool, str):
+        return await self._write(self.__client.write_coil, {
+            "address": address,
+            "value": value,
+            "slave": slave
+        })
+
+    async def write_register(self, address: int, value: int, slave: int = 1) -> bool | (bool, str):
+        return await self._write(self.__client.write_register, {
+            "address": address,
+            "value": value,
+            "slave": slave
+        })
+
+    async def write_coils(self, address: int, values: list[int] | int, slave: int = 1) -> bool | (bool, str):
+        return await self._write(self.__client.write_coils, {
+            "address": address,
+            "values": values,
+            "slave": slave
+        })
+
+    async def write_registers(self, address: int, values: list[int] | int, slave: int = 1) -> bool | (bool, str):
+        return await self._write(self.__client.write_registers, {
+            "address": address,
+            "values": values,
+            "slave": slave
+        })
+
+    async def _read(self, method: Callable, kwargs: dict) -> list | (list, str):
+        async def read_cb() -> (list, str):
+            result, error = await self.__error_handler(method, kwargs)
+            if self._return_errors:
+                return (result.registers, error) if hasattr(result, "registers") else ([], error)
+            return result.registers if hasattr(result, "registers") else []
+
+        return await self._execute_and_return(read_cb)
+
+    async def _write(self, method: Callable, kwargs: dict) -> bool | (bool, str):
+        async def write_cb() -> (bool, str):
+            _, error = await self.__error_handler(method, kwargs)
+            result = not error
+            if self._return_errors:
+                return (result, error)
+            return result
+
+        return await self._execute_and_return(write_cb)
+
+    async def _execute_and_return(self, callback: _CALLBACK_TYPE) -> (list | bool, str):
+        result_obj = {"result": None, "executed": False}
+
+        async def return_from_callback() -> None:
+            result_obj["result"] = await callback()
+            result_obj["executed"] = True
+
+        self.__execute(return_from_callback)
+
+        wait_time = 1.5
+        while not result_obj["executed"] and wait_time < self.__execute_timeout_s:
+            await asyncio.sleep(0.01)
+            wait_time += 0.01
+
+        return result_obj["result"]
+
+    async def __error_handler(self, method: Callable, kwargs: dict) -> (list | bool, str):
+        result = None
+        error = ""
+        try:
+            result = await method(**kwargs)
+            await asyncio.sleep(self.__after_execute_timeout_ms)
+            if result.isError() or isinstance(result, ExceptionResponse):
+                error = f"{result.exception_code}_{ModbusExceptions.decode(result.exception_code)}"
+                raise ModbusException(result)
+        except Exception as e:
+            self._logger.error(f"Error: {e}", method=method.__name__, params=kwargs)
+            if not error:
+                error = str(e)
+            if not self._is_connected:
+                await self._connect()
+        return (result, error)
+
+    def __execute(self, callback: _CALLBACK_TYPE) -> None:
+        async def execute_cb() -> None:
             self.__actions.append(callback)
             if self.__is_locked:
                 return
@@ -59,9 +169,8 @@ class DMAioModbusBaseClient:
                         cb_type = None if cb is None else type(cb)
                         self._logger.error(f"Invalid callback: Expected callable, got {cb_type}")
                         continue
-
                 try:
-                    await cb(self.__temp_client)
+                    await cb()
                 except Exception as e:
                     if not self._is_connected:
                         self._logger.error(f"Connection error: {e}.\nReconnecting...")
@@ -78,24 +187,7 @@ class DMAioModbusBaseClient:
             self.__is_locked = False
             self.__disconnect_task = asyncio.create_task(self.__wait_on_disconnect())
 
-        _ = asyncio.create_task(_execute())
-
-    async def execute_and_return(self, callback: _TEMP_CALLBACK_TYPE, timeout: float = 5):
-        result_obj = {"result": None, "executed": False}
-
-        async def return_from_callback(temp_client: DMAioModbusTempClientInterface):
-            result_obj["result"] = await callback(temp_client)
-            result_obj["executed"] = True
-
-        self.execute(return_from_callback)
-
-        wait_time = 1.5
-        timeout = timeout if timeout > 0 else 1
-        while not result_obj["executed"] and wait_time < timeout:
-            await asyncio.sleep(0.01)
-            wait_time += 0.01
-
-        return result_obj["result"]
+        _ = asyncio.create_task(execute_cb())
 
     @property
     def _is_connected(self) -> bool:
@@ -117,108 +209,17 @@ class DMAioModbusBaseClient:
         if self._is_connected:
             self._disconnect()
 
-    async def __error_handler(self, method: Callable, kwargs: dict) -> (any, str):
-        result = None
-        error = ""
-        try:
-            result = await method(**kwargs)
-            await asyncio.sleep(self.__after_execute_timeout_ms)
-            if result.isError() or isinstance(result, ExceptionResponse):
-                error = f"{result.exception_code}_{ModbusExceptions.decode(result.exception_code)}"
-                raise ModbusException(result)
-        except Exception as e:
-            self._logger.error(f"Error: {e}", method=method.__name__, params=kwargs)
-            if not error:
-                error = str(e)
-            if not self._is_connected:
-                await self._connect()
-        return (result, error)
-
-    async def _read(self, method, kwargs: dict) -> (list, str):
-        result, error = await self.__error_handler(method, kwargs)
-        return (result.registers, error) if hasattr(result, "registers") else ([], error)
-
-    async def _write(self, method, kwargs: dict) -> (bool, str):
-        _, error = await self.__error_handler(method, kwargs)
-        result = not error
-        return (result, error)
-
-    async def __read_coils(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
-        return await self._read(self.__client.read_coils, {
-            "address": address,
-            "count": count,
-            "slave": slave
-        })
-
-    async def __read_discrete_inputs(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
-        return await self._read(self.__client.read_discrete_inputs, {
-            "address": address,
-            "count": count,
-            "slave": slave
-        })
-
-    async def __read_holding_registers(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
-        return await self._read(self.__client.read_holding_registers, {
-            "address": address,
-            "count": count,
-            "slave": slave
-        })
-
-    async def __read_input_registers(self, address: int, count: int = 1, slave: int = 1) -> (list, str):
-        return await self._read(self.__client.read_input_registers, {
-            "address": address,
-            "count": count,
-            "slave": slave
-        })
-
-    async def __write_coil(self, address: int, value: int, slave: int = 1) -> (bool, str):
-        return await self._write(self.__client.write_coil, {
-            "address": address,
-            "value": value,
-            "slave": slave
-        })
-
-    async def __write_register(self, address: int, value: int, slave: int = 1) -> (bool, str):
-        return await self._write(self.__client.write_register, {
-            "address": address,
-            "value": value,
-            "slave": slave
-        })
-
-    async def __write_coils(self, address: int, values: list[int] | int, slave: int = 1) -> (bool, str):
-        return await self._write(self.__client.write_coils, {
-            "address": address,
-            "values": values,
-            "slave": slave
-        })
-
-    async def __write_registers(self, address: int, values: list[int] | int, slave: int = 1) -> (bool, str):
-        return await self._write(self.__client.write_registers, {
-            "address": address,
-            "values": values,
-            "slave": slave
-        })
-
-    def __create_temp_client(self) -> DMAioModbusTempClientInterface:
-        allowed_methods = {
-            "read_coils": self.__read_coils,
-            "read_discrete_inputs": self.__read_discrete_inputs,
-            "read_holding_registers": self.__read_holding_registers,
-            "read_input_registers": self.__read_input_registers,
-            "write_coil": self.__write_coil,
-            "write_register": self.__write_register,
-            "write_coils": self.__write_coils,
-            "write_registers": self.__write_registers
-        }
-
-        class TempClient(DMAioModbusTempClientInterface):
-            def __init__(self):
-                for name, method in allowed_methods.items():
-                    setattr(self, name, method)
-
-        return TempClient()
-
-    def __validate_timeouts(self, disconnect_timeout_s: int, after_execute_timeout_ms: int) -> (int, int):
+    def __validate_timeouts(
+        self,
+        execute_timeout_s: int,
+        disconnect_timeout_s: int,
+        after_execute_timeout_ms: int
+    ) -> (int, int):
+        if not isinstance(execute_timeout_s, int) or execute_timeout_s < 0:
+            if execute_timeout_s is not None:
+                self._logger.warning("Invalid execute_timeout_s value. Expected: value > 0. "
+                                     "Is set to default value: 5")
+            execute_timeout_s = 5
         if not isinstance(disconnect_timeout_s, int) or disconnect_timeout_s < 0:
             if disconnect_timeout_s is not None:
                 self._logger.warning("Invalid disconnect_timeout_s value. Expected: value > 0. "
@@ -229,7 +230,7 @@ class DMAioModbusBaseClient:
                 self._logger.warning("Invalid after_execute_timeout_ms value. Expected: value > 0. "
                                      "Is set to default value: 3")
             after_execute_timeout_ms = 3
-        return disconnect_timeout_s, after_execute_timeout_ms / 1000
+        return execute_timeout_s, disconnect_timeout_s, after_execute_timeout_ms / 1000
 
     @classmethod
     def set_logger(cls, logger) -> None:
