@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Coroutine, Type
+from typing import Callable, Coroutine, Type, Union
 from dm_logger import DMLogger
 from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
 from pymodbus import ModbusException, ExceptionResponse
@@ -11,6 +11,7 @@ __all__ = ['DMAioModbusBaseClient']
 
 class DMAioModbusBaseClient:
     _CALLBACK_TYPE = Callable[[], Coroutine]
+    _RETURN_CALLBACK_TYPE = Callable[[], Coroutine[Union[list, bool], str]]
     _logger = None
 
     def __init__(
@@ -97,24 +98,26 @@ class DMAioModbusBaseClient:
     async def _read(self, method: Callable, kwargs: dict) -> list | (list, str):
         async def read_cb() -> (list, str):
             result, error = await self.__error_handler(method, kwargs)
-            if self._return_errors:
-                return (result.registers, error) if hasattr(result, "registers") else ([], error)
-            return result.registers if hasattr(result, "registers") else []
+            if hasattr(result, "registers"):
+                return result.registers, error
+            return [], error
 
-        return await self._execute_and_return(read_cb)
+        return await self._execute_and_return(read_cb, [])
 
     async def _write(self, method: Callable, kwargs: dict) -> bool | (bool, str):
         async def write_cb() -> (bool, str):
             _, error = await self.__error_handler(method, kwargs)
             result = not error
-            if self._return_errors:
-                return (result, error)
-            return result
+            return result, error
 
-        return await self._execute_and_return(write_cb)
+        return await self._execute_and_return(write_cb, False)
 
-    async def _execute_and_return(self, callback: _CALLBACK_TYPE) -> (list | bool, str):
-        result_obj = {"result": None, "executed": False}
+    async def _execute_and_return(
+        self,
+        callback: _RETURN_CALLBACK_TYPE,
+        empty_result: list | bool
+    ) -> (list | bool, str):
+        result_obj = {"result": (empty_result, ""), "executed": False}
 
         async def return_from_callback() -> None:
             result_obj["result"] = await callback()
@@ -127,9 +130,11 @@ class DMAioModbusBaseClient:
             await asyncio.sleep(0.01)
             wait_time += 0.01
 
-        return result_obj["result"]
+        if self._return_errors:
+            return result_obj["result"]
+        return result_obj["result"][0]
 
-    async def __error_handler(self, method: Callable, kwargs: dict) -> (list | bool, str):
+    async def __error_handler(self, method: Callable, kwargs: dict) -> (list | None, str):
         result = None
         error = ""
         try:
@@ -144,7 +149,7 @@ class DMAioModbusBaseClient:
                 error = str(e)
             if not self._is_connected:
                 await self._connect()
-        return (result, error)
+        return result, error
 
     def __execute(self, callback: _CALLBACK_TYPE) -> None:
         async def execute_cb() -> None:
