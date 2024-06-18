@@ -24,22 +24,18 @@ class DMAioModbusSimulatorClient(DMAioModbusBaseClient):
         )
         self.__connected = False
 
-    async def _read(self, method: Callable, kwargs: dict, group_name: str = None) -> list | (list, str):
+    async def _read(self, method: Callable, kwargs: dict) -> list | (list, str):
         async def read_cb() -> (list, str):
             registers = [i for i in range(kwargs["count"])]
-            if self._return_errors:
-                return (registers, "")
-            return registers
+            return registers, ""
 
-        return await self._execute_and_return(read_cb)
+        return await self._execute_and_return(read_cb, [])
 
-    async def _write(self, method: Callable, kwargs: dict, group_name: str = None) -> bool | (bool, str):
+    async def _write(self, method: Callable, kwargs: dict) -> bool | (bool, str):
         async def write_cb() -> (bool, str):
-            if self._return_errors:
-                return (True, "")
-            return True
+            return True, ""
 
-        return await self._execute_and_return(write_cb)
+        return await self._execute_and_return(write_cb, False)
 
     @property
     def _is_connected(self) -> bool:

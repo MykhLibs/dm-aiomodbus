@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Coroutine, Type, Union
+from typing import Callable, Coroutine, Type, Tuple, Union
 from dm_logger import DMLogger
 from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
 from pymodbus import ModbusException, ExceptionResponse
@@ -11,7 +11,7 @@ __all__ = ['DMAioModbusBaseClient']
 
 class DMAioModbusBaseClient:
     _CALLBACK_TYPE = Callable[[], Coroutine]
-    _RETURN_CALLBACK_TYPE = Callable[[], Coroutine[Union[list, bool], str]]
+    _RETURN_CALLBACK_TYPE = Callable[[], Coroutine[None, None, Tuple[Union[list, bool], str]]]
     _logger = None
 
     def __init__(
