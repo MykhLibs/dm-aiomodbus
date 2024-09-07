@@ -28,7 +28,7 @@ setup(
     ],
     keywords='dm aiomodbus',
     project_urls={
-        'GitHub': 'https://github.com/DIMKA4621/dm-aiomodbus'
+        'GitHub': 'https://github.com/MykhLibs/dm-aiomodbus'
     },
     python_requires='>=3.8'
 )

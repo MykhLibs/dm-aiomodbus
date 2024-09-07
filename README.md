@@ -3,7 +3,7 @@
 ## Urls
 
 * [PyPI](https://pypi.org/project/dm-aiomodbus)
-* [GitHub](https://github.com/DIMKA4621/dm-aiomodbus)
+* [GitHub](https://github.com/MykhLibs/dm-aiomodbus)
 
 ## Example
 
