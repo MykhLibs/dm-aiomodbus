@@ -1,150 +1,42 @@
 # DM-aiomodbus
 
-## Urls
+### Asynchronous Modbus clients for Python with TCP and Serial connection support.
+
+## Links
 
 * [PyPI](https://pypi.org/project/dm-aiomodbus)
 * [GitHub](https://github.com/MykhLibs/dm-aiomodbus)
 
-## Example
+---
 
-### Connection
+| Section                                       | Description                                |
+|-----------------------------------------------|--------------------------------------------|
+| [Installation](#installation)                 | How to install the package                 |
+| [Usage](#usage)                               | How to use the package                     |
+| [Types](#types)                               | Types and classes used in the package      |
+| [Inner Client Methods](#inner-client-methods) | List of methods available for inner client |
 
-* Serial
-   ```python
-   from dm_aiomodbus import DMAioModbusSerialClient
+---
 
-   modbus_client = DMAioModbusSerialClient(
-       port="/dev/ttyUSB0",
-       baudrate=9600,
-       bytesize=8,
-       stopbits=2,
-       parity="N"
-   )
-   ```
+## Installation
 
-* TCP
-   ```python
-   from dm_aiomodbus import DMAioModbusTcpClient
+Check if you have Python 3.12.6 or higher installed:
 
-   modbus_client = DMAioModbusTcpClient(
-       host="192.168.0.0",
-       port=501
-   )
-   ```
-
-* Simulator _(always returns mock data)_
-   ```python
-   from dm_aiomodbus import DMAioModbusSimulatorClient
-
-   modbus_client = DMAioModbusSimulatorClient()
-   ```
-
-### Usage
-
-* _**Usual**_ client
-
-```python
-from dm_aiomodbus import DMAioModbusTcpClient
-import asyncio
-
-
-async def main():
-    # create client
-    modbus_client = DMAioModbusTcpClient(
-        host="192.168.0.0",
-        port=501,
-        name_tag="my_tcp_plc"
-    )
-
-    # read registers
-    reg_258_259, = await modbus_client.read_holding_registers(258, count=2)
-    reg_256 = await modbus_client.read_holding_registers(256)
-    # read second slave-device
-    reg_260_2 = await modbus_client.read_holding_registers(address=260, slave=2)
-    print(reg_258_259, reg_256, reg_260_2)
-
-    # write registers
-    status_256 = await modbus_client.write_register(256, 1)
-    print(status_256)
-    # write second slave-device
-    await modbus_client.write_register(260, value=0, slave=2)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+```bash
+python3 --version
 ```
 
-* _**Return-errors**_ client
+Install the package using pip:
 
-Error messages are returned with the execution result
-```python
-from dm_aiomodbus import DMAioModbusTcpClient
-import asyncio
-
-
-async def main():
-    # create client
-    modbus_client = DMAioModbusTcpClient(
-        host="192.168.0.0",
-        port=501,
-        return_errors=True
-    )
-
-    # read registers
-    # get values and error (if present, else "")
-    reg_258_259, err1 = await modbus_client.read_holding_registers(258, count=2)
-    print(reg_258_259, err1)
-
-    # write registers
-    # get write status and error (if present, else "")
-    status_256, err2 = await modbus_client.write_register(256, 1)
-    print(status_256, err2)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+```bash
+pip install dm-aiomodbus
 ```
 
-### Optional init parameters
+---
 
-| Parameter                  | Type   | Default Value | Description                                                         |
-|----------------------------|--------|---------------|---------------------------------------------------------------------|
-| `return_errors`            | `bool` | `False`       | Error messages are returned with the execution result               |
-| `execute_timeout_s`        | `int`  | `5`           | requests timeout (s)                                                |
-| `disconnect_timeout_s`     | `int`  | `20`          | timeout waiting for an active connection after the last request (s) |
-| `after_execute_timeout_ms` | `int`  | `3`           | timeout between requests (ms)                                       |
-| `name_tag`                 | `str`  | _auto_        | name tag for logger suffix                                          |
+## Usage
 
-### Set custom logger
-
-_If you want set up custom logger_
-
-```python
-from dm_aiomodbus import DMAioModbusTcpClient
-
-
-# create custom logger
-class MyLogger:
-    def debug(self, message):
-        pass
-
-    def info(self, message):
-        pass
-
-    def warning(self, message):
-        print(message)
-
-    def error(self, message):
-        print(message)
-
-
-# set up custom logger for all clients
-DMAioModbusTcpClient.set_logger(MyLogger())
-```
-
-### Run in Windows
-
-_If you run async code in **Windows**, set correct selector_
+### Windows Setup
 
 ```python
 import asyncio
@@ -153,3 +45,126 @@ import sys
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 ```
+
+### Code Example
+
+```python
+import asyncio
+from dm_aiomodbus import (
+   DMAioModbusSerialClient, DMAioModbusSerialClientConfig,
+   DMAioModbusTcpClient, DMAioModbusTcpClientConfig,
+   DMAioModbusInnerClient
+)
+
+
+async def main():
+    # Initialize Serial client
+    serial_modbus_client = DMAioModbusSerialClient(
+        config=DMAioModbusSerialClientConfig(
+            port="/dev/ttyUSB0",
+            baudrate=9600,  # default value
+            bytesize=8,  # default value
+            stopbits=2,  # default value
+            parity="N",  # default value
+            disconnect_timeout_s = 20  # default value
+        )
+    )
+
+    # Initialize TCP client
+    tcp_modbus_client = DMAioModbusTcpClient(
+        config=DMAioModbusTcpClientConfig(
+            host="129.168.1.5",
+            port=502,  # default value
+            disconnect_timeout_s = 20  # default value
+        )
+    )
+
+    # Read/write register(s)
+    async def callback(client: DMAioModbusInnerClient):
+        await client.write_register(256, 1)
+        result = await client.read_holding_registers(256, count=3)
+        print(result)
+
+    # Execute callback
+    await serial_modbus_client.execute(callback)
+    # or
+    await tcp_modbus_client.execute(callback)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+**Note:** All read/write methods should be called inside your callback function
+
+---
+
+## Types
+
+### Serial Client Config
+
+```python
+class DMAioModbusSerialClientConfig:
+    port: str  # Serial port name. Example: "/dev/ttyS0" - Linux UART, "/dev/ttyUSB0" - linux USB, "COM1" - Windows USB
+    baudrate: int = 9600  # Baudrate in bits per second
+    bytesize: Literal[7, 8] = 8  # Number of data bits
+    stopbits: Literal[1, 2] = 2  # Number of stop bits
+    parity: Literal["N", "E", "O"] = "N"  # Parity mode. N - None, E - Even, O - Odd
+    disconnect_timeout_s: int = 20  # Timeout in seconds
+```
+
+### TCP Client Config
+
+```python
+class DMAioModbusTcpClientConfig:
+    host: str  # IP address of the device
+    port: int = 502  # Port number
+    disconnect_timeout_s: int = 20  # Timeout in seconds
+```
+
+### Read Response
+
+```python
+class DMAioModbusReadResponse:
+    data: list[int]  # List of values read from device
+    error: str  # Error message if operation failed
+```
+
+**Note:** This class has `to_dict()` method that returns a dictionary
+
+**Warning:** If the operation failed, the `data` field will be an empty list
+
+### Write Response
+
+```python
+
+class DMAioModbusWriteResponse:
+    status: bool  # Boolean indicating success or failure
+    error: str  # Error message if operation failed
+```
+
+**Note:** This class has `to_dict()` method that returns a dictionary
+
+**Warning:** The status is considered True, if the operation did not result in an error.
+
+---
+
+## Inner Client Methods
+
+| Method                   | Arguments                                                                | Response Type                    |
+|--------------------------|--------------------------------------------------------------------------|----------------------------------|
+| `read_coils`             | - *address* `int`<br>- *count* `int` = 1<br>- *slave* `int`= 1           | [ReadResponse](#read-response)   |
+| `read_discrete_inputs`   | - *address* `int`<br>- *count* `int` = 1<br>- *slave* `int`= 1           | [ReadResponse](#read-response)   |
+| `read_holding_registers` | - *address* `int`<br>- *count* `int` = 1<br>- *slave* `int`= 1           | [ReadResponse](#read-response)   |
+| `read_input_registers`   | - *address* `int`<br>- *count* `int` = 1<br>- *slave* `int`= 1           | [ReadResponse](#read-response)   |
+| `write_coil`             | - *address* `int`<br>- *value* `int`<br>- *slave* `int` = 1              | [WriteResponse](#write-response) |
+| `write_register`         | - *address* `int`<br>- *value* `int`<br>- *slave* `int` = 1              | [WriteResponse](#write-response) |
+| `write_coils`            | - *address* `int`<br>- *values* `list[int] \| int`<br>- *slave* `int`= 1 | [WriteResponse](#write-response) |
+| `write_registers`        | - *address* `int`<br>- *values* `list[int] \| int`<br>- *slave* `int`= 1 | [WriteResponse](#write-response) |
+
+### Parameters Description
+
+- `address`: Register address _(single integer)_
+- `count`: Number of items to read _(default: 1)_
+- `value`/`values`: Value(s) to write _(single integer or list of integers)_
+- `slave`: Slave unit address _(default: 1)_
