@@ -15,7 +15,7 @@ from .types import DMAioModbusReadResponse, DMAioModbusWriteResponse, DMAioModbu
 class DMAioModbusBaseClientConfig:
     modbus_client: AsyncModbusSerialClient | AsyncModbusTcpClient
     disconnect_timeout_s: int = 20
-    name_tag: str = None
+    error_logging: bool = False
 
 
 class DMAioModbusBaseClient(ABC):
@@ -29,6 +29,7 @@ class DMAioModbusBaseClient(ABC):
         self._modbus_client = config.modbus_client
         self._disconnect_time_s = config.disconnect_timeout_s or 20
         self._operation_timeout_s = self._OPERATION_TIMEOUT_MS / 1000
+        self._error_logging = config.error_logging
 
         self._disconnect_task = None
         self._lock = asyncio.Lock()
@@ -41,7 +42,8 @@ class DMAioModbusBaseClient(ABC):
             try:
                 result = await callback(self._temp_client)
             except Exception as e:
-                self._logger.error(e)
+                if self._error_logging:
+                    self._logger.error(e)
 
             self._schedule_disconnect()
             return result
@@ -54,6 +56,8 @@ class DMAioModbusBaseClient(ABC):
                 raise ModbusException(error)
             return result, ""
         except Exception as e:
+            if self._error_logging:
+                self._logger.error(e)
             return None, str(e)
 
     async def _read(self, method, kwargs: dict) -> DMAioModbusReadResponse:
@@ -164,12 +168,7 @@ class DMAioModbusBaseClient(ABC):
 
     async def _check_connection(self) -> None:
         if not self._is_connected:
-            try:
-                if not await self._modbus_client.connect():
-                    raise ConnectionError("No connection established")
-            except Exception as e:
-                self._logger.error(f"Connection error: {e}")
-                pass
+            await self._modbus_client.connect()
 
     async def _wait_and_disconnect(self) -> None:
         await asyncio.sleep(self._disconnect_time_s)

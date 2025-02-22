@@ -14,6 +14,7 @@ class DMAioModbusSerialClientConfig:
     stopbits: Literal[1, 2] = 2
     parity: Literal["N", "E", "O"] = "N"
     disconnect_timeout_s: int = 20
+    error_logging: bool = False
 
 
 class DMAioModbusSerialClient(DMAioModbusBaseClient):
@@ -27,7 +28,8 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
                     stopbits=config.stopbits,
                     parity=config.parity
                 ),
-                disconnect_timeout_s=config.disconnect_timeout_s
+                disconnect_timeout_s=config.disconnect_timeout_s,
+                error_logging=config.error_logging
             )
         )
         self._logger = DMLogger(f"{self.__class__.__name__}-{config.port}")

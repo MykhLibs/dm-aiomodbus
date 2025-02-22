@@ -10,6 +10,7 @@ class DMAioModbusTcpClientConfig():
     host: str
     port: int = 502
     disconnect_timeout_s: int = 20
+    error_logging: bool = False
 
 
 class DMAioModbusTcpClient(DMAioModbusBaseClient):
@@ -20,7 +21,8 @@ class DMAioModbusTcpClient(DMAioModbusBaseClient):
                     host=config.host,
                     port=config.port
                 ),
-                disconnect_timeout_s=config.disconnect_timeout_s
+                disconnect_timeout_s=config.disconnect_timeout_s,
+                error_logging=config.error_logging
             )
         )
         self._logger = DMLogger(f"{self.__class__.__name__}-{config.host}:{config.port}")

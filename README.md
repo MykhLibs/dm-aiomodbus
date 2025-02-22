@@ -66,7 +66,8 @@ async def main():
             bytesize=8,  # default value
             stopbits=2,  # default value
             parity="N",  # default value
-            disconnect_timeout_s = 20  # default value
+            disconnect_timeout_s=20,  # default value
+            error_logging=False  # default value
         )
     )
 
@@ -75,7 +76,8 @@ async def main():
         config=DMAioModbusTcpClientConfig(
             host="129.168.1.5",
             port=502,  # default value
-            disconnect_timeout_s = 20  # default value
+            disconnect_timeout_s=20,  # default value
+            error_logging=False  # default value
         )
     )
 
@@ -111,6 +113,7 @@ class DMAioModbusSerialClientConfig:
     stopbits: Literal[1, 2] = 2  # Number of stop bits
     parity: Literal["N", "E", "O"] = "N"  # Parity mode. N - None, E - Even, O - Odd
     disconnect_timeout_s: int = 20  # Timeout in seconds
+    error_logging: bool = False  # Enable error logging
 ```
 
 ### TCP Client Config
@@ -120,6 +123,7 @@ class DMAioModbusTcpClientConfig:
     host: str  # IP address of the device
     port: int = 502  # Port number
     disconnect_timeout_s: int = 20  # Timeout in seconds
+    error_logging: bool = False  # Enable error logging
 ```
 
 ### Read Response
