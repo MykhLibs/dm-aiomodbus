@@ -26,7 +26,8 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
                     baudrate=config.baudrate,
                     bytesize=config.bytesize,
                     stopbits=config.stopbits,
-                    parity=config.parity
+                    parity=config.parity,
+                    timeout=1
                 ),
                 disconnect_timeout_s=config.disconnect_timeout_s,
                 error_logging=config.error_logging

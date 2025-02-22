@@ -19,7 +19,8 @@ class DMAioModbusTcpClient(DMAioModbusBaseClient):
             config=DMAioModbusBaseClientConfig(
                 modbus_client=AsyncModbusTcpClient(
                     host=config.host,
-                    port=config.port
+                    port=config.port,
+                    timeout=1
                 ),
                 disconnect_timeout_s=config.disconnect_timeout_s,
                 error_logging=config.error_logging

@@ -37,16 +37,15 @@ class DMAioModbusBaseClient(ABC):
 
     async def execute(self, callback: _CALLBACK_TYPE) -> any:
         async with self._lock:
-            await self._check_connection()
-
             try:
-                result = await callback(self._temp_client)
+                if not await self._check_connection():
+                    raise ModbusException("Connection error")
+                return await callback(self._temp_client)
             except Exception as e:
                 if self._error_logging:
                     self._logger.error(e)
-
-            self._schedule_disconnect()
-            return result
+            finally:
+                self._schedule_disconnect()
 
     async def _error_handler(self, method: Callable, kwargs: dict) -> (any, str):
         try:
@@ -166,9 +165,10 @@ class DMAioModbusBaseClient(ABC):
     def _is_connected(self) -> bool:
         return self._modbus_client.connected
 
-    async def _check_connection(self) -> None:
+    async def _check_connection(self) -> bool:
         if not self._is_connected:
-            await self._modbus_client.connect()
+            return await self._modbus_client.connect()
+        return True
 
     async def _wait_and_disconnect(self) -> None:
         await asyncio.sleep(self._disconnect_time_s)
