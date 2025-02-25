@@ -20,7 +20,7 @@
 
 ## Installation
 
-Check if you have Python 3.12.6 or higher installed:
+Check if you have Python 3.8 or higher installed:
 
 ```bash
 python3 --version
