@@ -67,6 +67,7 @@ async def main():
             stopbits=2,  # default value
             parity="N",  # default value
             disconnect_timeout_s=20,  # default value
+            operation_timeout_ms=100,  # default value
             error_logging=False  # default value
         )
     )
@@ -74,9 +75,10 @@ async def main():
     # Initialize TCP client
     tcp_modbus_client = DMAioModbusTcpClient(
         config=DMAioModbusTcpClientConfig(
-            host="129.168.1.5",
+            host="192.168.1.5",
             port=502,  # default value
             disconnect_timeout_s=20,  # default value
+            operation_timeout_ms=100,  # default value
             error_logging=False  # default value
         )
     )
@@ -112,7 +114,8 @@ class DMAioModbusSerialClientConfig:
     bytesize: Literal[7, 8] = 8  # Number of data bits
     stopbits: Literal[1, 2] = 2  # Number of stop bits
     parity: Literal["N", "E", "O"] = "N"  # Parity mode. N - None, E - Even, O - Odd
-    disconnect_timeout_s: int = 20  # Timeout in seconds
+    disconnect_timeout_s: int = 20  # Disconnect timeout in seconds
+    operation_timeout_ms: int = 100  # Not recommended to set it lower than 100ms
     error_logging: bool = False  # Enable error logging
 ```
 
@@ -122,7 +125,8 @@ class DMAioModbusSerialClientConfig:
 class DMAioModbusTcpClientConfig:
     host: str  # IP address of the device
     port: int = 502  # Port number
-    disconnect_timeout_s: int = 20  # Timeout in seconds
+    disconnect_timeout_s: int = 20  # Disconnect timeout in seconds
+    operation_timeout_ms: int = 100  # For remote TCP connections, it is recommended to set 200 or higher
     error_logging: bool = False  # Enable error logging
 ```
 

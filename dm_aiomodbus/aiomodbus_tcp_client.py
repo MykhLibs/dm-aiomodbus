@@ -6,10 +6,11 @@ from .aiomodbus_base_client import DMAioModbusBaseClient, DMAioModbusBaseClientC
 
 
 @dataclass
-class DMAioModbusTcpClientConfig():
+class DMAioModbusTcpClientConfig:
     host: str
     port: int = 502
     disconnect_timeout_s: int = 20
+    operation_timeout_ms: int = 100  # For remote TCP connections, it is recommended to set 200 or higher.
     error_logging: bool = False
 
 
@@ -23,6 +24,7 @@ class DMAioModbusTcpClient(DMAioModbusBaseClient):
                     timeout=1
                 ),
                 disconnect_timeout_s=config.disconnect_timeout_s,
+                operation_timeout_ms=config.operation_timeout_ms,
                 error_logging=config.error_logging
             )
         )

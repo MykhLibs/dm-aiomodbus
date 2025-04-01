@@ -16,11 +16,11 @@ from .types import DMAioModbusReadResponse, DMAioModbusWriteResponse, DMAioModbu
 class DMAioModbusBaseClientConfig:
     modbus_client: AsyncModbusSerialClient | AsyncModbusTcpClient
     disconnect_timeout_s: int = 20
+    operation_timeout_ms: int = 100  # Not recommended set to less than 100
     error_logging: bool = False
 
 
 class DMAioModbusBaseClient(ABC):
-    _OPERATION_TIMEOUT_MS: int = 100  # Not recommended set to less than 100
     _CALLBACK_TYPE = Callable[[DMAioModbusInnerClient], Coroutine[any, any, any]]
 
     def __init__(self, config: DMAioModbusBaseClientConfig):
@@ -29,7 +29,8 @@ class DMAioModbusBaseClient(ABC):
 
         self._modbus_client = config.modbus_client
         self._disconnect_time_s = config.disconnect_timeout_s or 20
-        self._operation_timeout_s = self._OPERATION_TIMEOUT_MS / 1000
+        self._operation_timeout_ms = config.operation_timeout_ms
+        self._operation_timeout_s = config.operation_timeout_ms / 1000
         self._error_logging = config.error_logging
 
         self._disconnect_task = None
@@ -69,7 +70,7 @@ class DMAioModbusBaseClient(ABC):
             data = result.registers if hasattr(result, "registers") else []
             return DMAioModbusReadResponse(data, error)
         except asyncio.TimeoutError:
-            return DMAioModbusReadResponse([], f"Operation timeout ({self._OPERATION_TIMEOUT_MS}ms)")
+            return DMAioModbusReadResponse([], f"Operation timeout ({self._operation_timeout_ms}ms)")
 
     async def _write(self, method: Callable, kwargs: dict) -> DMAioModbusWriteResponse:
         try:
@@ -80,7 +81,7 @@ class DMAioModbusBaseClient(ABC):
             status = not bool(error)
             return DMAioModbusWriteResponse(status, error)
         except asyncio.TimeoutError:
-            return DMAioModbusWriteResponse(False, f"Operation timeout ({self._OPERATION_TIMEOUT_MS}ms)")
+            return DMAioModbusWriteResponse(False, f"Operation timeout ({self._operation_timeout_ms}ms)")
 
     async def _read_coils(self, address: int, count: int = 1, slave: int = 1) -> DMAioModbusReadResponse:
         return await self._read(

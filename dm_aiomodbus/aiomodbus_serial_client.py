@@ -14,6 +14,7 @@ class DMAioModbusSerialClientConfig:
     stopbits: Literal[1, 2] = 2
     parity: Literal["N", "E", "O"] = "N"
     disconnect_timeout_s: int = 20
+    operation_timeout_ms: int = 100  # Not recommended set to less than 100
     error_logging: bool = False
 
 
@@ -30,6 +31,7 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
                     timeout=1
                 ),
                 disconnect_timeout_s=config.disconnect_timeout_s,
+                operation_timeout_ms=config.operation_timeout_ms,
                 error_logging=config.error_logging
             )
         )
