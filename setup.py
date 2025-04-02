@@ -17,7 +17,7 @@ setup(
     url='https://pypi.org/project/dm-aiomodbus',
     packages=find_packages(),
     install_requires=[
-        'dm-logger~=0.6.1',
+        'dm-logger~=0.6.2',
         'pyserial==3.5',
         'pymodbus==3.8.6',
     ],
