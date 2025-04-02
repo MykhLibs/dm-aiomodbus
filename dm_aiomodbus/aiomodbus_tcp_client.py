@@ -14,6 +14,8 @@ class DMAioModbusTcpClientConfig:
 
 
 class DMAioModbusTcpClient(DMAioModbusBaseClient):
+    _logger_params = None
+
     def __init__(self, config: DMAioModbusTcpClientConfig):
         super().__init__(
             config=DMAioModbusBaseClientConfig(

@@ -18,6 +18,8 @@ class DMAioModbusSerialClientConfig:
 
 
 class DMAioModbusSerialClient(DMAioModbusBaseClient):
+    _logger_params = None
+
     def __init__(self, config: DMAioModbusSerialClientConfig) -> None:
         super().__init__(
             config=DMAioModbusBaseClientConfig(
