@@ -1,6 +1,5 @@
 from typing import Literal
 from dataclasses import dataclass
-from dm_logger import DMLogger
 from pymodbus.client import AsyncModbusSerialClient
 
 from .aiomodbus_base_client import DMAioModbusBaseClient, DMAioModbusBaseClientConfig
@@ -35,4 +34,9 @@ class DMAioModbusSerialClient(DMAioModbusBaseClient):
                 error_logging=config.error_logging
             )
         )
-        self._logger = DMLogger(f"{self.__class__.__name__}-{config.port}")
+
+        if not isinstance(self._logger_params, dict):
+            self._logger_params = {}
+        if "name" not in self._logger_params:
+            self._logger_params["name"] = f"{self.__class__.__name__}-{config.port}"
+        self._set_logger()

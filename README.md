@@ -176,3 +176,23 @@ class DMAioModbusWriteResponse:
 - `count`: Number of items to read _(default: 1)_
 - `value`/`values`: Value(s) to write _(single integer or list of integers)_
 - `slave`: Slave unit address _(default: 1)_
+
+### Set custom logger parameters
+
+```python
+from dm_aiomodbus import DMAioModbusSerialClient
+from dm_logger import FormatterConfig
+
+
+# set up custom logger for all clients
+DMAioModbusSerialClient.set_logger_params(
+   {
+      "name": "my_name",
+      "formatter_config": FormatterConfig(
+         show_datetime=False,
+      )
+   }
+)
+```
+
+See more about DMLogger [here](https://github.com/MykhLibs/dm-logger)

@@ -21,10 +21,11 @@ class DMAioModbusBaseClientConfig:
 
 
 class DMAioModbusBaseClient(ABC):
+    _logger_params = None
     _CALLBACK_TYPE = Callable[[DMAioModbusInnerClient], Coroutine[any, any, any]]
 
     def __init__(self, config: DMAioModbusBaseClientConfig):
-        self._logger = DMLogger(self.__class__.__name__)
+        self._set_logger()
         pymodbus_apply_logging_config(logging.CRITICAL)  # Hide pymodbus warning logs
 
         self._modbus_client = config.modbus_client
@@ -204,3 +205,14 @@ class DMAioModbusBaseClient(ABC):
                 self2.write_registers = self._write_registers
 
         return InnerClient()
+
+    def _set_logger(self) -> None:
+        params = {"name": self.__class__.__name__}
+        if isinstance(self._logger_params, dict):
+            params.update(self._logger_params)
+        self._logger = DMLogger(**params)
+
+    @classmethod
+    def set_logger_params(cls, extra_params = None) -> None:
+        if isinstance(extra_params, dict) or extra_params is None:
+            cls._logger_params = extra_params
