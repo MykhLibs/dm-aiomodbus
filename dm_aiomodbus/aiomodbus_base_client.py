@@ -68,7 +68,11 @@ class DMAioModbusBaseClient(ABC):
                 self._error_handler(method, kwargs),
                 timeout=self._operation_timeout_s
             )
-            data = result.registers if hasattr(result, "registers") else []
+            data = []
+            if hasattr(result, "bits") and result.bits:
+                data = [1 if i else 0 for i in result.bits[:kwargs["count"]]]
+            elif hasattr(result, "registers") and result.registers:
+                data = result.registers
             return DMAioModbusReadResponse(data, error)
         except asyncio.TimeoutError:
             return DMAioModbusReadResponse([], f"Operation timeout ({self._operation_timeout_ms}ms)")
